@@ -26,7 +26,7 @@ AI: agent.js collega Groq (modello GPT-OSS 120B) alla conversazione; system-prom
 
 API: ecofreight.js chiama EcoFreight per ottenere le emissioni, senza affidare il calcolo al modello AI.
 
-Memoria: memory.js salva i messaggi in SQLite, mentre il browser conserva l'identificativo della conversazione in localStorage.
+Memoria: memory.js salva i messaggi su Turso (database compatibile con SQLite), mentre il browser conserva l'identificativo della conversazione in localStorage.
 
 # Tecnologie utilizzate:
 
@@ -56,4 +56,4 @@ Groq (modello GPT-OSS 120B) API
 
 EcoFreight API
 
-SQLite
+Turso (compatibile con SQLite)

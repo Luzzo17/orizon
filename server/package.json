@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
+    "start": "node src/index.js",
     "dev": "node --env-file=.env --watch src/index.js"
   },
   "keywords": [],
@@ -10,6 +11,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "express": "^5.2.1"
   }
 }

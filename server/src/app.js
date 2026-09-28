@@ -1,5 +1,6 @@
 import express from "express"
 import { randomUUID } from "node:crypto"
+import { fileURLToPath } from "node:url"
 import { askAgent } from "./agent.js"
 import { getMessages, saveMessages } from "./memory.js"
 
@@ -50,7 +51,7 @@ app.post("/chat", async (req, res) => {
   pendingConversations.add(conversationId)
 
   try {
-    const messages = getMessages(conversationId)
+    const messages = await getMessages(conversationId)
 
     if (message === undefined) {
       return res.json({ messages: visibleMessages(messages) })
@@ -81,17 +82,18 @@ app.post("/chat", async (req, res) => {
       },
     ]
 
-    saveMessages(conversationId, updatedMessages)
+    await saveMessages(conversationId, updatedMessages)
 
     res.json({ messages: visibleMessages(updatedMessages) })
   } catch (error) {
+    let safeMessage = String(error.message)
+    for (const secret of [process.env.GROQ_API_KEY, process.env.ECOFREIGHT_API_KEY, process.env.TURSO_AUTH_TOKEN]) {
+      if (secret) safeMessage = safeMessage.replaceAll(secret, "[CHIAVE NASCOSTA]")
+    }
     console.error("Errore chat:", {
       name: error.name,
       status: error.status,
-      message: String(error.message).replaceAll(
-        process.env.GROQ_API_KEY || "__nessuna_chiave__",
-        "[CHIAVE NASCOSTA]"
-      ),
+      message: safeMessage,
     })
 
     const quotaExceeded = error.status === 429
@@ -105,5 +107,8 @@ app.post("/chat", async (req, res) => {
     pendingConversations.delete(conversationId)
   }
 })
+
+// In produzione Express serve anche il frontend compilato da Vite.
+app.use(express.static(fileURLToPath(new URL("../../client/dist/", import.meta.url))))
 
 export default app

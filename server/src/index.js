@@ -1,7 +1,10 @@
 import app from "./app.js"
+import { initializeMemory } from "./memory.js"
 
-const port = 3001
+const port = Number(process.env.PORT || 3001)
 
-app.listen(port, () => {
+await initializeMemory()
+
+app.listen(port, "0.0.0.0", () => {
   console.log(`Backend Orizon attivo su http://localhost:${port}`)
 })
