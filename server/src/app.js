@@ -6,7 +6,7 @@ import { getMessages, saveMessages } from "./memory.js"
 const app = express()
 const pendingConversations = new Set()
 
-// I dettagli del protocollo Gemini rimangono nel database, non nel browser.
+// I dettagli del protocollo del modello rimangono nel database, non nel browser.
 const visibleMessages = (messages) => messages.map(({ id, role, content }) => ({
   id, role, content,
 }))
@@ -89,7 +89,7 @@ app.post("/chat", async (req, res) => {
       name: error.name,
       status: error.status,
       message: String(error.message).replaceAll(
-        process.env.GEMINI_API_KEY || "__nessuna_chiave__",
+        process.env.GROQ_API_KEY || "__nessuna_chiave__",
         "[CHIAVE NASCOSTA]"
       ),
     })
@@ -98,7 +98,7 @@ app.post("/chat", async (req, res) => {
 
     res.status(quotaExceeded ? 429 : 503).json({
       error: quotaExceeded
-        ? "Quota Gemini raggiunta. Riprova più tardi."
+        ? "Quota Groq raggiunta. Riprova più tardi."
         : "Non riesco a completare la richiesta. Riprova.",
     })
   } finally {

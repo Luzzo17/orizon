@@ -22,7 +22,7 @@ Services: chat-api.js utilizza Fetch per inviare i messaggi al backend e recuper
 
 Backend: Express espone l'endpoint /chat e gestisce le richieste del frontend.
 
-AI: agent.js collega Google Gemini alla conversazione; system-prompt.js definisce le istruzioni dell'assistente e il tool per richiedere la stima tramite function calling.
+AI: agent.js collega Groq (modello GPT-OSS 120B) alla conversazione; system-prompt.js definisce le istruzioni dell'assistente e il tool per richiedere la stima tramite function calling.
 
 API: ecofreight.js chiama EcoFreight per ottenere le emissioni, senza affidare il calcolo al modello AI.
 
@@ -52,7 +52,7 @@ Node.js
 
 Express
 
-Google Gemini API
+Groq (modello GPT-OSS 120B) API
 
 EcoFreight API
 

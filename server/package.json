@@ -10,7 +10,6 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@google/genai": "^2.24.0",
     "express": "^5.2.1"
   }
 }

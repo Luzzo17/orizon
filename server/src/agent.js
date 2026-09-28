@@ -1,79 +1,74 @@
-import { GoogleGenAI } from "@google/genai"
 import { SYSTEM_PROMPT, EMISSIONS_TOOL } from "./system-prompt.js"
 import { estimateEmissions, buildEcofreightRequest } from "./ecofreight.js"
 
-if (!process.env.GEMINI_API_KEY || !process.env.GEMINI_MODEL) {
-  throw new Error(
-    "Configura GEMINI_API_KEY e GEMINI_MODEL nel file server/.env."
-  )
+async function generateWithGroq(request) {
+  const apiKey = process.env.GROQ_API_KEY?.trim()
+  if (!apiKey) throw new Error("Configura GROQ_API_KEY nel file server/.env.")
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    signal: AbortSignal.timeout(30000),
+  })
+  const data = await response.json()
+  if (!response.ok) {
+    const error = new Error(data.error?.message || "Groq non disponibile.")
+    error.status = response.status
+    throw error
+  }
+  return data
 }
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    timeout: 30000,
-  },
-})
-
 export async function askAgent(messages, {
-  generate = (request) => ai.models.generateContent(request),
+  generate = generateWithGroq,
   estimate = estimateEmissions,
 } = {}) {
-  // Le vecchie chat contengono solo testo; le nuove conservano anche i tool.
-  const contents = messages.flatMap((message) => {
-    if (message.role === "assistant" && Array.isArray(message.modelTurns)) {
-      return message.modelTurns
+  const contents = [{ role: "system", content: SYSTEM_PROMPT }]
+  for (const message of messages) {
+    // Riprende i tool Groq; delle vecchie chat Gemini conserva il testo.
+    const turns = message.modelTurns
+    if (message.role === "assistant" && Array.isArray(turns) && turns.length &&
+        turns.every((turn) => ["assistant", "tool"].includes(turn.role))) {
+      contents.push(...turns)
+    } else {
+      contents.push({ role: message.role, content: message.content })
     }
-    return [{
-      role: message.role === "assistant" ? "model" : "user",
-      parts: [{ text: message.content }],
-    }]
-  })
+  }
   const modelTurns = []
   const results = new Map()
-
-  // Limite di sicurezza contro richieste ripetute senza una risposta finale.
   for (let step = 0; step < 4; step++) {
     const response = await generate({
-      model: process.env.GEMINI_MODEL,
-      contents,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        tools: [{ functionDeclarations: [EMISSIONS_TOOL] }],
-        maxOutputTokens: 4000,
-      },
+      model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+      messages: contents,
+      tools: [{ type: "function", function: EMISSIONS_TOOL }],
+      tool_choice: "auto",
+      max_completion_tokens: 2000,
     })
-    const candidate = response.candidates?.[0]
-    const content = candidate?.content
-    if (candidate?.finishReason !== "STOP" || !content?.parts?.length) {
-      throw new Error("Risposta Gemini vuota o incompleta.")
+    const candidate = response.choices?.[0]
+    const message = candidate?.message
+    if (!message || !["stop", "tool_calls"].includes(candidate.finish_reason)) {
+      throw new Error("Risposta Groq vuota o incompleta.")
     }
-
-    // Conserviamo tutto il Content, comprese le firme richieste da Gemini.
-    contents.push(content)
-    modelTurns.push(content)
-    const calls = content.parts.filter((part) => part.functionCall)
-      .map((part) => part.functionCall)
-
+    const calls = message.tool_calls || []
+    const turn = { role: "assistant", content: message.content || null,
+      ...(calls.length ? { tool_calls: calls } : {}) }
+    contents.push(turn)
+    modelTurns.push(turn)
     if (!calls.length) {
-      const reply = content.parts.filter((part) => !part.thought && part.text)
-        .map((part) => part.text).join("\n").trim()
-      if (!reply) throw new Error("Gemini non ha restituito una risposta testuale.")
+      const reply = message.content?.trim()
+      if (!reply) throw new Error("Groq non ha restituito una risposta testuale.")
       return { reply, modelTurns }
     }
-
     if (calls.length > 4 || step === 3) break
-    const parts = []
     for (const call of calls) {
       let result
       try {
-        if (call.name !== EMISSIONS_TOOL.name) {
-          throw new Error("Funzione non supportata.")
-        }
-        const key = JSON.stringify(buildEcofreightRequest(call.args))
+        if (call.function.name !== EMISSIONS_TOOL.name) throw new Error("Funzione non supportata.")
+        const args = JSON.parse(call.function.arguments)
+        const key = JSON.stringify(buildEcofreightRequest(args))
         if (!results.has(key)) {
           try {
-            results.set(key, { ok: true, result: await estimate(call.args) })
+            results.set(key, { ok: true, result: await estimate(args) })
           } catch (error) {
             results.set(key, { ok: false, error: error.message })
           }
@@ -82,15 +77,10 @@ export async function askAgent(messages, {
       } catch (error) {
         result = { ok: false, error: error.message }
       }
-      parts.push({ functionResponse: {
-        name: call.name,
-        ...(call.id ? { id: call.id } : {}),
-        response: result,
-      } })
+      const toolTurn = { role: "tool", tool_call_id: call.id, content: JSON.stringify(result) }
+      contents.push(toolTurn)
+      modelTurns.push(toolTurn)
     }
-    const toolTurn = { role: "user", parts }
-    contents.push(toolTurn)
-    modelTurns.push(toolTurn)
   }
   throw new Error("Troppi tentativi di calcolo. Riprova descrivendo un solo viaggio.")
 }
